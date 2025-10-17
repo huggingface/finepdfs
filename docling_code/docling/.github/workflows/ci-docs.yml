@@ -1,0 +1,19 @@
+name: "Run Docs CI"
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches:
+      - "**"
+      - "!gh-pages"
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  build-docs:
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.head.repo.full_name != 'docling-project/docling' && github.event.pull_request.head.repo.full_name != 'docling-project/docling') }}
+    uses: ./.github/workflows/docs.yml
+    with:
+      deploy: false

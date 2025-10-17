@@ -1,0 +1,26 @@
+on:
+    workflow_call:
+        inputs:
+            deploy:
+                type: boolean
+                description: "If true, the docs will be deployed."
+                default: false
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+    run-docs:
+        runs-on: ubuntu-latest
+        steps:
+        - uses: actions/checkout@v4
+        - name: Install uv and set the python version
+          uses: astral-sh/setup-uv@v5
+          with:
+            python-version: ${{ matrix.python-version }}
+            enable-cache: true
+        - name: Build docs
+          run: uv run mkdocs build --verbose --clean
+        - name: Build and push docs
+          if: inputs.deploy
+          run: uv run --no-sync mkdocs gh-deploy --force

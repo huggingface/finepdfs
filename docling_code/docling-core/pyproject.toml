@@ -1,0 +1,157 @@
+[project]
+name = "docling-core"
+version = "2.38.2"  # DO NOT EDIT, updated automatically
+description = "A python library to define and validate data types in Docling."
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["docling", "discovery", "etl", "information retrieval", "analytics", "database", "database schema", "schema", "JSON"]
+readme = "README.md"
+authors = [
+    { name = "Cesar Berrospi Ramis", email = "ceb@zurich.ibm.com" },
+    { name = "Panos Vagenas", email = "pva@zurich.ibm.com" },
+    { name = "Michele Dolfi", email = "dol@zurich.ibm.com" },
+    { name = "Christoph Auer", email = "cau@zurich.ibm.com" },
+    { name = "Peter Staar", email = "taa@zurich.ibm.com" },
+]
+maintainers = [
+    { name = "Panos Vagenas", email = "pva@zurich.ibm.com" },
+    { name = "Michele Dolfi", email = "dol@zurich.ibm.com" },
+    { name = "Christoph Auer", email = "cau@zurich.ibm.com" },
+    { name = "Peter Staar", email = "taa@zurich.ibm.com" },
+    { name = "Cesar Berrospi Ramis", email = "ceb@zurich.ibm.com" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+    "Programming Language :: Python :: 3",
+]
+requires-python = '>=3.9,<4.0'
+dependencies = [
+    'jsonschema (>=4.16.0,<5.0.0)',
+    'pydantic (>=2.6.0,<3.0.0,!=2.10.0,!=2.10.1,!=2.10.2)',
+    'jsonref (>=1.1.0,<2.0.0)',
+    'tabulate (>=0.9.0,<0.10.0)',
+    'pandas (>=2.1.4,<3.0.0)',
+    'pillow (>=10.0.0,<12.0.0)',
+    'pyyaml (>=5.1,<7.0.0)',
+    'typing-extensions (>=4.12.2,<5.0.0)',
+    'typer (>=0.12.5,<0.17.0)',
+    'latex2mathml (>=3.77.0,<4.0.0)',
+]
+
+[project.urls]
+homepage = "https://github.com/docling-project"
+repository = "https://github.com/docling-project/docling-core"
+issues = "https://github.com/docling-project/docling-core/issues"
+changelog = "https://github.com/docling-project/docling-core/blob/main/CHANGELOG.md"
+
+[project.scripts]
+# validate = "docling_core.utils.validate:main"  # use python -m docling_core.utils.validate
+# generate_jsonschema = "docling_core.utils.generate_jsonschema:main"  # use python -m docling_core.utils.generate_jsonschema
+# generate_docs = "docling_core.utils.generate_docs:main"  # use python -m docling_core.utils.generate_docs
+docling-view = "docling_core.cli.view:app"
+
+[project.optional-dependencies]
+chunking = ['semchunk (>=2.2.0,<3.0.0)', 'transformers (>=4.34.0,<5.0.0)']
+chunking-openai = ['semchunk', 'tiktoken (>=0.9.0,<0.10.0)']
+
+[dependency-groups]
+dev = [
+    "pre-commit~=3.7",
+    "mypy~=1.6",
+    "black~=24.4",
+    "isort~=5.10",
+    "autoflake~=2.0",
+    "flake8~=7.1",
+    "pycodestyle~=2.10",
+    "flake8-docstrings~=1.6",
+    "pep8-naming~=0.13",
+    "jsondiff~=2.0",
+    "types-setuptools~=70.3",
+    "pandas-stubs~=2.1",
+    "ipykernel~=6.29",
+    "coverage~=7.6",
+    "pytest~=8.3",
+    "pytest-cov>=6.1.1",
+    "python-semantic-release~=7.32",
+]
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+where = [".", "docling_core/resources/schemas"]
+include = ["docling_core*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"*" = ["*.json"]
+
+[tool.black]
+line-length = 88
+target-version = ["py39", "py310"]
+include = '\.pyi?$'
+preview = true
+
+[tool.isort]
+profile = "black"
+line_length = 88
+py_version = 39
+multi_line_output = 3
+include_trailing_comma = true
+
+[tool.autoflake]
+in-place = true
+ignore-init-module-imports = true
+remove-all-unused-imports = true
+remove-unused-variables = true
+expand-star-imports = true
+recursive = true
+
+[tool.mypy]
+pretty = true
+# strict = true
+# disallow_untyped_defs = true
+no_implicit_optional = true
+namespace_packages = true
+show_error_codes = true
+python_version = "3.9"
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "jsondiff.*",
+    "jsonref.*",
+    "jsonschema.*",
+    "requests.*",
+    "semchunk.*",
+    "tabulate.*",
+    "transformers.*",
+    "yaml.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["test.*"]
+disallow_untyped_defs = false
+
+[tool.semantic_release]
+# for default values check:
+# https://github.com/python-semantic-release/python-semantic-release/blob/v7.32.2/semantic_release/defaults.cfg
+
+version_source = "tag_only"
+branch = "main"
+
+# configure types which should trigger minor and patch version bumps respectively
+# (note that they must be a subset of the configured allowed types):
+parser_angular_allowed_types = "build,chore,ci,docs,feat,fix,perf,style,refactor,test"
+parser_angular_minor_types = "feat"
+parser_angular_patch_types = "fix,perf"
