@@ -1,0 +1,40 @@
+[project]
+name = "finepdfs"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+dependencies = [
+    "accelerate>=1.10.1",
+    "aiofiles>=24.1.0",
+    "boto3>=1.40.18",
+    "datatrove[io,processing,s3]",
+    "dnspython>=2.8.0",
+    "docling",
+    "docling-core",
+    "docling-ibm-models",
+    "flash-attn==2.7.4.post1",
+    "ipykernel>=6.30.1",
+    "libmagic>=1.0",
+    "openvino>=2025.3.0",
+    "pymupdf==1.26.1",
+    "scikit-learn>=1.7.2",
+    "torch==2.6.0",
+    "vllm>=0.8.5.post1",
+    "xgboost>=3.0.5",
+]
+
+
+[tool.uv.sources]
+datatrove = { git = "https://github.com/huggingface/datatrove.git", branch = "finepdfs" }
+docling-ibm-models = { workspace = true }
+docling-core = { workspace = true }
+docling = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "docling_code/docling",
+    "docling_code/docling-ibm-models",
+    "docling_code/docling-core",
+]

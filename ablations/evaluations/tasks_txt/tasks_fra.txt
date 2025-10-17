@@ -1,0 +1,8 @@
+lighteval|global_mmlu_cs_fra_cf|3|1
+lighteval|mlmm_arc_fra_cf:challenge|3|1
+lighteval|mintaka_fra|3|1
+lighteval|belebele_fra_Latn_cf|3|1
+lighteval|fquadv2_fra|3|1
+lighteval|xcodah_fra_cf|3|1
+lighteval|xcsqa_fra_cf|3|1
+lighteval|mlmm_hellaswag_fra_cf|3|1

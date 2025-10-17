@@ -1,0 +1,12 @@
+lighteval|arc_cf|3|1
+lighteval|hellaswag_cf|3|1
+lighteval|mmlu_redux_cf|3|1
+lighteval|xcsqa_cf|3|1
+lighteval|squad_v2|3|1
+lighteval|openbookqa_cf|3|1
+lighteval|winogrande_cf|3|1
+lighteval|piqa_cf|3|1
+lighteval|gsm8k|3|1
+lighteval|drop|3|1
+lighteval|wikitablequestions|3|1
+lighteval|treb_qa|3|1
