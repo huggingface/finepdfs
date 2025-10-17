@@ -13,18 +13,10 @@ This project uses a workspace setup with vendored Docling and a specific `datatr
 pip install uv
 uv venv -p 3.12
 source .venv/bin/activate
-uv pip install -e .
+uv sync
 ```
 
-Alternative (pip, less reproducible):
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-Requirements are in [pyproject.toml](./pyproject.toml) (notable: `torch==2.6.0`, `vllm>=0.8.5.post1`, `pymupdf==1.26.1`). A GPU is strongly recommended for vLLM steps and tokenization.
+Requirements are in [pyproject.toml](./pyproject.toml) (notable: `torch==2.6.0`, `vllm>=0.8.5.post1`, `pymupdf==1.26.1`). A GPU is needed recommended for vLLM steps.
 
 ### Quickstart
 All steps are orchestrated by [run_finepdfs_pipeline.py](./run_finepdfs_pipeline.py).
