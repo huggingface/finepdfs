@@ -27,10 +27,10 @@ dependencies = [
 
 
 [tool.uv.sources]
-datatrove = { git = "https://github.com/huggingface/datatrove.git", branch = "finepdfs" }
 docling-ibm-models = { workspace = true }
 docling-core = { workspace = true }
 docling = { workspace = true }
+datatrove = { git = "https://github.com/huggingface/datatrove.git", rev = "finepdfs" }
 
 [tool.uv.workspace]
 members = [
