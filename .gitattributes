@@ -1,0 +1,2 @@
+models/heron/** text !filter !merge !diff
+models/xgb_ocr_classifier/** text !filter !merge !diff
