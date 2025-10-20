@@ -55,10 +55,10 @@ To run Gemma classification, see [thresholds/gemma_classify.py](./thresholds/gem
 
 ### Quality classifier training
 We evaluated the following filters/classifiers:
-- dclm
-- ocr quality
-- edu
-- edu v2 (beyond undergraduate‑level textbooks)
+- `dclm`
+- `ocr quality`
+- `edu`
+- `edu v2 (beyond undergraduate‑level textbooks)`
 
 Prompts are in the labeling code. We found only `edu` and `dclm` to yield meaningful gains, with `edu` clearly leading. For non‑English languages we provide a BERT‑based `edu` classifier. For English, we provide a multi‑head classifier on top of ModernBERT for efficient multi‑task inference. The threshold selected is by taking top-10% of scores.
 
@@ -92,7 +92,7 @@ Datasets/models:
   - OpenVINO quantized docling layout model: [models/heron/](./models/heron/) (quantized with [models/model_prep_code/docling_quant/](./models/model_prep_code/docling_quant/)).
   - Model based filtering training code (Edu/Dclm): [classification](./classification/) (`classification/train_classifier` for training, [classification/label_data_with_teacher.py](./classification/label_data_with_teacher.py) for labeling)
 
-‑ Language filtering
+- Language filtering
   - Threshold discovery: [thresholds/](./thresholds/)
 
 ### Limitations (high‑level)
