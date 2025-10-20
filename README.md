@@ -1,3 +1,5 @@
+![FinePDFs](FinePDFs.png)
+
 ## FinePDFs: code and pipelines for the FinePDFs dataset
 
 This repository accompanies the FinePDFs dataset release and contains the end‑to‑end code to filter, extract, OCR, postprocess, deduplicate, classify, and package large‑scale PDF text data.
