@@ -18,7 +18,7 @@ source .venv/bin/activate
 uv sync
 ```
 
-Requirements are in [pyproject.toml](./pyproject.toml) (notable: `torch==2.6.0`, `vllm>=0.8.5.post1`, `pymupdf==1.26.1`). A GPU is needed recommended for vLLM steps.
+Requirements are in [pyproject.toml](./pyproject.toml) (notable: `torch==2.6.0`, `vllm>=0.8.5.post1`, `pymupdf==1.26.1`). A GPU is needed for vLLM steps.
 
 ### Quickstart
 All steps are orchestrated by [run_finepdfs_pipeline.py](./run_finepdfs_pipeline.py).
