@@ -5,7 +5,7 @@ from typing import Any, AsyncGenerator, Iterable
 
 from datatrove.data import Document, DocumentsPipeline
 from datatrove.pipeline.base import PipelineStep
-from datatrove.pipeline.inference.run_inference import InferenceRunner, InferenceSuccess
+from datatrove.pipeline.inference.run_inference import InferenceRunner, InferenceResult
 from datatrove.pipeline.writers.jsonl import JsonlWriter
 from datatrove.utils.media import iter_pages
 from datatrove.utils.typeshelper import StatHints
@@ -188,24 +188,35 @@ def prepare_requests_postprocess(media_bytes: bytes | None, document: Document) 
     return requests
 
 
-async def async_query_builder_postprocess(runner: InferenceRunner, document: Document) -> AsyncGenerator[dict[str, Any], None]:
-    if not hasattr(runner, "process_pool"):
-        from concurrent.futures import ProcessPoolExecutor
-        import atexit
+async def rollout_postprocess(document: Document, generate: Any, **kwargs) -> Any:
+    # Use the existing logic to prepare requests
+    import asyncio
+    from concurrent.futures import ProcessPoolExecutor
+    import atexit
 
-        runner.process_pool = ProcessPoolExecutor(max_workers=4)
-        runner.process_pool.__enter__()
-        atexit.register(runner.process_pool.__exit__, None, None, None)
+    if not hasattr(rollout_postprocess, "process_pool"):
+        rollout_postprocess.process_pool = ProcessPoolExecutor(max_workers=4)
+        atexit.register(rollout_postprocess.process_pool.shutdown)
 
     from .postprocess_utils import prepare_requests_postprocess as _prep
 
     requests_tuple = await asyncio.get_event_loop().run_in_executor(
-        runner.process_pool, _prep, document.media[0].media_bytes, document
+        rollout_postprocess.process_pool, _prep, document.media[0].media_bytes, document
     )
     request_ids = [i for _, i in requests_tuple]
     document.metadata["request_page_indices"] = request_ids
-    for request, _ in requests_tuple:
-        yield request
+    
+    # Run inference for all relevant pages
+    tasks = [generate(request) for request, _ in requests_tuple]
+    results = await asyncio.gather(*tasks)
+    
+    # Store results in metadata for postprocess_postprocess
+    document.metadata["inference_results"] = results
+    
+    # Run post-processing
+    postprocess_postprocess(document)
+    
+    return results
 
 
 def postprocess_postprocess(document: Document) -> Document:
@@ -214,7 +225,7 @@ def postprocess_postprocess(document: Document) -> Document:
     for page_result, request_page_index in zip(
         document.metadata.get("inference_results", []), document.metadata.get("request_page_indices", [])
     ):
-        if not isinstance(page_result, InferenceSuccess):
+        if not isinstance(page_result, InferenceResult):
             continue
         if page_result.text != "TEXT":
             page_texts[request_page_index] = None

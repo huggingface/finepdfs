@@ -1,3 +1,4 @@
+import asyncio
 import argparse
 import os
 from typing import Any, AsyncGenerator, Optional
@@ -11,9 +12,9 @@ from datatrove.pipeline.base import PipelineStep
 from datatrove.pipeline.filters import LambdaFilter
 from datatrove.pipeline.media.filters.mime_filter import MimeTypeFilter
 from datatrove.pipeline.media.media_readers.warc import WarcReaderFast
-from datatrove.pipeline.media.media_readers.zstd import ZstdThreadedReader
+from datatrove.pipeline.media.media_readers.zstd import ZstdReader
 from datatrove.pipeline.media.readers.http_fetch import HTTPFetchReader
-from datatrove.pipeline.media.media_writers.zstd import BinaryZstdWriter
+from datatrove.pipeline.media.media_writers.zstd import ZstdWriter
 from datatrove.pipeline.readers.jsonl import JsonlReader
 from datatrove.pipeline.readers.parquet import ParquetReader
 from datatrove.pipeline.writers import HuggingFaceDatasetWriter
@@ -22,7 +23,7 @@ from datatrove.pipeline.tokens.counter import TokensCounter
 from datatrove.pipeline.inference.run_inference import (
     InferenceConfig,
     InferenceRunner,
-    InferenceSuccess,
+    InferenceResult,
 )
 from datatrove.pipeline.dedup.exact_dedup import (
     ExactDedupFilter,
@@ -53,14 +54,13 @@ from blocks.utils import MIME_TYPES, index_adapter, filter_non_pdf, filter_non_t
 from classification.label_utils import AddTextChunks
 
 # Utilities split into separate modules to keep this file short
-from pipeline_utils.extract_utils import async_query_builder_extract, postprocess_extract
+from pipeline_utils.extract_utils import rollout_extract
 from pipeline_utils.postprocess_utils import (
     AddMetadata,
     RemoveDoclingMetadata,
     DropFailedDocuments,
     CoallesceFailedPages,
-    async_query_builder_postprocess,
-    postprocess_postprocess,
+    rollout_postprocess,
 )
 from pipeline_utils.push_utils import push_adapter
 
@@ -138,7 +138,7 @@ def run_filter_pdfs_and_refetch(crawl_ids: list[str]):
             # We recommend separting the httpfetch reader to a separate pipeline to maximize resource utilization.
             HTTPFetchReader(workers=15, max_retries=3, timeout=(60, 60), download_timeout=60 * 10),
             MimeTypeFilter(mime_types=MIME_TYPES["pdf"]),
-            BinaryZstdWriter(
+            ZstdWriter(
                 max_file_size=100 * 1024 * 1024 * 1024,
                 output_folder=PDF_SAVE_DIR,
                 output_filename=f"{crawl_id.replace('-', '_')}_${{rank}}.zstd",
@@ -185,7 +185,7 @@ def run_content_dedup_ocr_organize():
                 workers=5,
             )
         else:
-            reader = ZstdThreadedReader(
+            reader = ZstdReader(
                 data_folder=PDF_SAVE_DIR,
                 workers=2,
                 preserve_order=True,
@@ -262,7 +262,7 @@ def run_extract(gpus: int=1):
                 workers=5,
             )
         else:
-            reader = ZstdThreadedReader(
+            reader = ZstdReader(
                 data_folder=PDF_SAVE_DIR,
                 workers=2,
                 preserve_order=True,
@@ -296,23 +296,22 @@ def run_extract(gpus: int=1):
                 workers=5,
             )
         else:
-            reader = ZstdThreadedReader(
+            reader = ZstdReader(
                 data_folder=PDF_SAVE_DIR,
                 workers=2,
                 preserve_order=True,
             )
 
         runner = InferenceRunner(
+            rollout_fn=rollout_extract,
             config=InferenceConfig(
                 model_name_or_path="reducto/RolmOCR",
-                temperature=0.0,
-                max_concurrent_tasks=50 if truncation == "truncated" else 300,
+                default_generation_params={"temperature": 0.0},
+                max_concurrent_generations=50 if truncation == "truncated" else 300,
                 server_type="vllm",
                 metric_interval=100,
                 dp=gpus,
             ),
-            query_builder=async_query_builder_extract,
-            postprocess_fn=postprocess_extract,
             output_writer=JsonlWriter(output_folder=OUTPUT_OCR_DIR.format(prefix=f"{truncation}/extracted")),
         )
 
@@ -343,7 +342,7 @@ def run_postprocess():
                 workers=5,
             )
         else:
-            reader = ZstdThreadedReader(
+            reader = ZstdReader(
                 data_folder=PDF_SAVE_DIR,
                 workers=2,
                 preserve_order=True,
@@ -367,15 +366,14 @@ def run_postprocess():
             # would be to finetuned ViT model to classify blank pages, however
             # this we didn't have time for it.
             InferenceRunner(
+                rollout_fn=rollout_postprocess,
                 config=InferenceConfig(
                     model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct",
-                    temperature=0.0,
-                    max_concurrent_tasks=50,
+                    default_generation_params={"temperature": 0.0},
+                    max_concurrent_generations=50,
                     server_type="vllm",
                     metric_interval=100,
                 ),
-                query_builder=async_query_builder_postprocess,
-                postprocess_fn=postprocess_postprocess,
                 output_writer=JsonlWriter(
                     output_folder=SAVE_OCR_DIR.format(prefix=f"extracted")
                 ),
@@ -531,17 +529,15 @@ def model_exists(repo_id: str) -> bool:
         return False
 
 
-async def async_query_builder_model(runner: InferenceRunner, document: Document) -> AsyncGenerator[dict[str, Any], None]:
-    for chunk in document.metadata["chunks"]:
-        yield {"input": chunk}
+def make_rollout_model(output_fields_in_order: list[str]):
+    async def rollout_model(document: Document, generate: Any, **kwargs):
+        requests = [{"input": chunk} for chunk in document.metadata["chunks"]]
+        tasks = [generate(req) for req in requests]
+        results = await asyncio.gather(*tasks)
 
-
-def make_postprocess_fn_model(output_fields_in_order: list[str]):
-    def postprocess(document: Document):
-        results = document.metadata.get("inference_results", [])
         per_field_scores: dict[str, list[float | None]] = {field: [] for field in output_fields_in_order}
         for chunk_result in results:
-            if isinstance(chunk_result, InferenceSuccess):
+            if isinstance(chunk_result, InferenceResult):
                 try:
                     values = [float(part.strip()) for part in chunk_result.text.split(",") if part.strip() != ""]
                 except Exception:
@@ -553,11 +549,10 @@ def make_postprocess_fn_model(output_fields_in_order: list[str]):
                 per_field_scores[field].append(value)
         for field, series in per_field_scores.items():
             document.metadata[field] = series
-        document.metadata.pop("inference_results", None)
         document.metadata.pop("chunks", None)
         return document
 
-    return postprocess
+    return rollout_model
 
 
 def run_model_classification(languages: Optional[list[str]] = None, gpus: int = 1):
@@ -606,8 +601,8 @@ def run_model_classification(languages: Optional[list[str]] = None, gpus: int = 
         config = InferenceConfig(
             server_type="custom",
             model_name_or_path=";".join(present_models),
-            max_concurrent_requests=1024,
-            max_concurrent_tasks=2048,
+            max_concurrent_generations=1024,
+            max_concurrent_documents=2048,
             model_kwargs=model_kwargs,
             dp=gpus,
             use_chat=False,
@@ -617,10 +612,9 @@ def run_model_classification(languages: Optional[list[str]] = None, gpus: int = 
         pipeline = [
             JsonlReader(data_folder=data_folder, glob_pattern="*.jsonl.gz"),
             InferenceRunner(
-                query_builder=async_query_builder_model,
+                rollout_fn=make_rollout_model(output_fields_in_order),
                 config=config,
                 output_writer=JsonlWriter(output_folder=output_folder),
-                postprocess_fn=make_postprocess_fn_model(output_fields_in_order),
             ),
         ]
         LocalPipelineExecutor(pipeline=pipeline).run()

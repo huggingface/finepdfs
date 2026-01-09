@@ -810,8 +810,8 @@ wheels = [
 
 [[package]]
 name = "datatrove"
-version = "0.6.0"
-source = { git = "https://github.com/huggingface/datatrove.git?rev=finepdfs#71971c84b0add3566d703f92deb6ed78d3de8cc2" }
+version = "0.7.0"
+source = { git = "https://github.com/huggingface/datatrove.git?rev=finepdfs#13c51cf24d1eadef52701949d386741e142c69be" }
 dependencies = [
     { name = "dill" },
     { name = "fsspec" },

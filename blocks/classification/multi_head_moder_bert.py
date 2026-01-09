@@ -24,7 +24,7 @@ class MultiHeadModernBert(nn.Module):
                     reference_layer.named_parameters(), 
                     current_layer.named_parameters()
                 ):
-                    if ref_name != cur_name or not torch.equal(ref_param, cur_param):
+                    if ref_name != cur_name or not torch.equal(ref_param, cur_param.to(ref_param.device)):
                         layer_is_common = False
                         break
                 
@@ -52,19 +52,19 @@ class MultiHeadModernBert(nn.Module):
         self.final_norm = models[0].model.final_norm
         self.config = models[0].config
         self.dtype = models[0].dtype
-        self.device = models[0].device
+        self.model_device = models[0].device
         self.warn_if_padding_and_no_attention_mask = models[0].warn_if_padding_and_no_attention_mask
 
-    def _update_attention_mask(self, attention_mask: torch.Tensor, output_attentions: bool) -> torch.Tensor:
+    def _update_attention_mask(self, attention_mask: torch.Tensor, output_attentions: bool) -> tuple[torch.Tensor, torch.Tensor]:
         if output_attentions:
             if self.config._attn_implementation == "sdpa":
-                logger.warning_once(
+                logger.warning(
                     "Outputting attentions is only supported with the 'eager' attention implementation, "
                     'not with "sdpa". Falling back to `attn_implementation="eager"`.'
                 )
                 self.config._attn_implementation = "eager"
             elif self.config._attn_implementation != "eager":
-                logger.warning_once(
+                logger.warning(
                     "Outputting attentions is only supported with the eager attention implementation, "
                     f'not with {self.config._attn_implementation}. Consider setting `attn_implementation="eager"`.'
                     " Setting `output_attentions=False`."
@@ -92,23 +92,23 @@ class MultiHeadModernBert(nn.Module):
 
         if hasattr(self, "hf_device_map") and len(self.hf_device_map) > 1:
             if self.config.reference_compile:
-                logger.warning_once(
+                logger.warning(
                     "If `accelerate` split the model across devices, `torch.compile` will not work. "
                     "Falling back to non-compiled mode."
                 )
             self.config.reference_compile = False
 
-        if self.device.type == "mps":
+        if self.model_device.type == "mps":
             if self.config.reference_compile:
-                logger.warning_once(
+                logger.warning(
                     "Compiling the model with `torch.compile` and using a `torch.mps` device is not supported. "
                     "Falling back to non-compiled mode."
                 )
             self.config.reference_compile = False
 
-        if self.device.type == "cpu":
+        if self.model_device.type == "cpu":
             if self.config.reference_compile:
-                logger.warning_once(
+                logger.warning(
                     "Compiling the model with `torch.compile` and using a `torch.cpu` device is not supported. "
                     "Falling back to non-compiled mode."
                 )

@@ -52,7 +52,7 @@ class BaseMediaExtractor(PipelineStep):
           rank: int:  (Default value = 0)
           world_size: int:  (Default value = 1)
         """
-        with (ExtractorSandbox(timeout=self.timeout, wamup_text=(None, None)) as extractor, self.exclusion_writer if self.exclusion_writer else contextlib.nullcontext() as exclusion_writer):
+        with (ExtractorSandbox(timeout=self.timeout, warmup_text=(None, None)) as extractor, self.exclusion_writer if self.exclusion_writer else contextlib.nullcontext() as exclusion_writer):
             for doc in data:
                 self.stat_update(StatHints.total)
                 with self.track_time():

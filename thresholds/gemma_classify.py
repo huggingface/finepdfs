@@ -11,9 +11,11 @@ from typing import Any, AsyncGenerator, Dict
 from datatrove.executor.local import LocalPipelineExecutor
 from datatrove.pipeline.readers.jsonl import JsonlReader
 from datatrove.pipeline.writers.jsonl import JsonlWriter
+from datatrove.data import Document
 from datatrove.pipeline.inference.run_inference import (
     InferenceConfig,
     InferenceRunner,
+    InferenceResult,
 )
 from langcodes import Language
 
@@ -24,38 +26,41 @@ DEFAULT_MODEL_NAME = "google/gemma-3-27b-it"
 
 
 
-def build_query_builder(language: str, model_name: str):
+async def rollout_gemma(document: Document, generate: Any, **kwargs) -> Any:
+    import re
+    language = kwargs.get("language")
+    model_name = kwargs.get("model_name")
+    
     lang = Language.get(language.replace("-", "_"))
     language_name = lang.display_name()
     language_script = lang.script_name()
 
-    async def query_builder(runner: InferenceRunner, document) -> AsyncGenerator[Dict[str, Any], None]:
-        from typing import Any
-        import re
-        runner_any: Any = runner
-        pages_list = []
-        start = 0
-        for i, page_offset in enumerate(document.media[0]["page_offsets"]):
-            if document.metadata["best_page_languages"][i] == language:
-                pages_list.append(document.text[start:page_offset])
-            start = page_offset
-        pages = "\n\n".join(pages_list)
+    pages_list = []
+    start = 0
+    for i, page_offset in enumerate(document.media[0].metadata["page_offsets"]):
+        if document.metadata["best_page_languages"][i] == language:
+            pages_list.append(document.text[start:page_offset])
+        start = page_offset
+    pages = "\n\n".join(pages_list)
 
-        # Remove the tables
-        table_pattern = r"^\s*\|.*\|\s*$"
-        pages = re.sub(table_pattern, "", pages, re.MULTILINE)
-        # Truncate all \n{2,} to \n\n
-        pages = re.sub(r"\n{3,}", "\n\n", pages)
+    # Remove the tables
+    table_pattern = r"^\s*\|.*\|\s*$"
+    pages = re.sub(table_pattern, "", pages, re.MULTILINE)
+    # Truncate all \n{2,} to \n\n
+    pages = re.sub(r"\n{3,}", "\n\n", pages)
 
-        if not hasattr(runner_any, "_tokenizer"):
-            from transformers import AutoTokenizer
-            runner_any._tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # Use a tokenizer from kwargs or load it once
+    tokenizer = kwargs.get("tokenizer")
+    if tokenizer is None:
+        from transformers import AutoTokenizer
+        # This is a bit slow to do every time, but rollout_fn can receive a shared tokenizer via shared_context
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-        tokens = runner_any._tokenizer.encode(pages, add_special_tokens=False)
-        tokens = tokens[:1024]
-        text_to_analyze = runner_any._tokenizer.decode(tokens)
+    tokens = tokenizer.encode(pages, add_special_tokens=False)
+    tokens = tokens[:1024]
+    text_to_analyze = tokenizer.decode(tokens)
 
-        prompt = f"""\
+    prompt = f"""\
 ## Task
 
 Determine if the given text is written in {language_name} ({language}).
@@ -76,37 +81,28 @@ Respond with only: `YES` or `NO`
 {text_to_analyze}
 ```"""
 
-        yield {
-            "messages": [
-                {"role": "user", "content": [{"type": "text", "text": prompt}]}
-            ],
-            "max_tokens": 3,
-            "temperature": 0.0,
-        }
+    results = await generate({
+        "messages": [
+            {"role": "user", "content": [{"type": "text", "text": prompt}]}
+        ],
+        "max_tokens": 3,
+        "temperature": 0.0,
+    })
 
-    return query_builder
-
-
-def build_postprocessor():
-    def postprocessor(document):
-        from datatrove.pipeline.inference.run_inference import InferenceSuccess
-        results = document.metadata.get("inference_results", []) if document.metadata else []
-        for result in results:
-            if isinstance(result, InferenceSuccess):
-                response = (result.text or "").strip().upper()
-                if document.metadata is None:
-                    document.metadata = {}
-                if response.startswith("YES"):
-                    document.metadata["language_correct"] = True
-                    return document
-                elif response.startswith("NO"):
-                    document.metadata["language_correct"] = False
-                    return document
-                else:
-                    document.metadata["language_correct"] = None
-        return document
-
-    return postprocessor
+    for result in results:
+        if isinstance(result, InferenceResult):
+            response = (result.text or "").strip().upper()
+            if document.metadata is None:
+                document.metadata = {}
+            if response.startswith("YES"):
+                document.metadata["language_correct"] = True
+                return document
+            elif response.startswith("NO"):
+                document.metadata["language_correct"] = False
+                return document
+            else:
+                document.metadata["language_correct"] = None
+    return document
 
 
 def build_pipeline(language: str, limit: int, model_name: str, output_folder: str):
@@ -118,19 +114,22 @@ def build_pipeline(language: str, limit: int, model_name: str, output_folder: st
     )
 
     SEQS = 64
+    from transformers import AutoTokenizer
     inference = InferenceRunner(
-        query_builder=build_query_builder(language, model_name),
-        postprocessor=build_postprocessor(),
+        rollout_fn=rollout_gemma,
+        shared_context={
+            "language": language,
+            "model_name": model_name,
+            "tokenizer": AutoTokenizer.from_pretrained(model_name),
+        },
         config=InferenceConfig(
             server_type="vllm",
             model_name_or_path=model_name,
-            temperature=0.0,
+            default_generation_params={"temperature": 1.0},
             model_max_context=2048+3,
-            max_concurrent_requests=500,
-            max_concurrent_tasks=500,
+            max_concurrent_generations=500,
             metric_interval=30,
             model_kwargs={"limit-mm-per-prompt.image": 0, "limit-mm-per-prompt.video": 0, "max-num-seqs": SEQS, "max-num-batched-tokens": SEQS*1203},
-            kill_server_on_finish=True,
         ),
         output_writer=JsonlWriter(output_folder),
     )

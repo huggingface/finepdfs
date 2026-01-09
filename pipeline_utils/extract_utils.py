@@ -4,7 +4,7 @@ import io
 from typing import Any, AsyncGenerator, Literal, Optional
 
 from datatrove.data import Document
-from datatrove.pipeline.inference.run_inference import InferenceRunner, InferenceSuccess
+from datatrove.pipeline.inference.run_inference import InferenceRunner, InferenceResult
 import pymupdf
 
 
@@ -151,7 +151,7 @@ def postprocess_extract(document: Document) -> Document | None:
 
     page_dict = {index: "<--- failed_to_process_page --->" for index in range(document.metadata.get("num_pages", 0))}
     for i, page_result in enumerate(page_results):
-        if not isinstance(page_result, InferenceSuccess):
+        if not isinstance(page_result, InferenceResult):
             continue
 
         stop_reason = page_result.finish_reason
@@ -228,23 +228,50 @@ def prepare_requests_extract(media_bytes: bytes | None) -> tuple[list[dict[str, 
     return requests, pymupdf_doc.page_count
 
 
-async def async_query_builder_extract(runner: InferenceRunner, document: Document) -> AsyncGenerator[dict[str, Any], None]:
-    if not hasattr(runner, "process_pool"):
-        from concurrent.futures import ProcessPoolExecutor
-        import atexit
+async def rollout_extract(document: Document, generate: Any, **kwargs) -> Any:
+    # Use the existing logic to prepare requests
+    # We might need to handle the process pool if it's still needed, 
+    # but for simplicity let's assume we can run it here.
+    # Actually, async_query_builder_extract used a process pool of the runner.
+    # We can do the same if we have access to it or just run in executor.
+    
+    # For now, let's keep it simple and use the document directly.
+    # prepare_requests_extract is synchronous and uses pymupdf.
+    
+    import asyncio
+    from concurrent.futures import ProcessPoolExecutor
+    import atexit
 
-        runner.process_pool = ProcessPoolExecutor(max_workers=4)
-        runner.process_pool.__enter__()
-        atexit.register(runner.process_pool.__exit__, None, None, None)
+    # We can't easily access the runner's pool here unless passed in kwargs, 
+    # but we can create one if needed or just run it.
+    # Actually, let's just run it in the event loop's default executor if it's not too heavy,
+    # or create a global pool.
+    
+    # To maintain performance, let's use a process pool.
+    if not hasattr(rollout_extract, "process_pool"):
+        rollout_extract.process_pool = ProcessPoolExecutor(max_workers=4)
+        atexit.register(rollout_extract.process_pool.shutdown)
 
     requests, n_pages = await asyncio.get_event_loop().run_in_executor(
-        runner.process_pool, prepare_requests_extract, document.media[0].media_bytes
+        rollout_extract.process_pool, prepare_requests_extract, document.media[0].media_bytes
     )
     document.metadata["num_pages"] = n_pages
+    
     if requests is None:
-        return
-    for request in requests:
-        yield request
+        return None
+
+    # Run inference for all pages
+    tasks = [generate(request) for request in requests]
+    results = await asyncio.gather(*tasks)
+    
+    # Store results in metadata for postprocess_extract
+    document.metadata["inference_results"] = results
+    
+    # Run post-processing
+    postprocess_extract(document)
+    
+    return results
+
 
 
 
